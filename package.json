@@ -2,9 +2,6 @@
   "name": "pingis-backend",
   "version": "1.0.0",
   "type": "module",
-  "engines": {
-    "node": "18.x"
-  },
   "scripts": {
     "start": "node index.js"
   }
