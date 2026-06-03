@@ -62,6 +62,70 @@ app.post("/start-tournament", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
+app.post("/auto-assign", async (req, res) => {
+  try {
+    // 1. Hitta nästa QUEUED match
+    const { data: matches, error: matchError } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("status", "QUEUED")
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (matchError) return res.status(500).json(matchError);
+    if (!matches || matches.length === 0) {
+      return res.json({ message: "No queued matches" });
+    }
+
+    const match = matches[0];
+
+    // 2. Hitta ledigt bord
+    const { data: tables, error: tableError } = await supabase
+      .from("tables")
+      .select("*")
+      .eq("status", "FREE")
+      .limit(1);
+
+    if (tableError) return res.status(500).json(tableError);
+    if (!tables || tables.length === 0) {
+      return res.json({ message: "No free tables" });
+    }
+
+    const table = tables[0];
+
+    // 3. Uppdatera match → PLAYING + table_id
+    const { data: updatedMatch, error: updateError } = await supabase
+      .from("matches")
+      .update({
+        status: "PLAYING",
+        table_id: table.id
+      })
+      .eq("id", match.id)
+      .select();
+
+    if (updateError) return res.status(500).json(updateError);
+
+    // 4. Markera bord som upptaget
+    const { error: tableUpdateError } = await supabase
+      .from("tables")
+      .update({
+        status: "OCCUPIED"
+      })
+      .eq("id", table.id);
+
+    if (tableUpdateError) return res.status(500).json(tableUpdateError);
+
+    res.json({
+      message: "Match assigned to table",
+      match: updatedMatch,
+      table
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Backend kör på port", PORT);
 });
