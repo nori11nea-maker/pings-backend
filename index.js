@@ -1,4 +1,7 @@
-import express from "express";
+
+console.log("PORT =", process.env.PORT);
+console.log("ALL ENV KEYS =", Object.keys(process.env).sort());import express from "express";
+
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
