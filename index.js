@@ -4,53 +4,48 @@ import { createClient } from "@supabase/supabase-js";
 const app = express();
 app.use(express.json());
 
-// ========================
-// ENV CHECK (Railway)
-// ========================
+// =====================
+// ENV
+// =====================
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 console.log("SUPABASE_URL =", SUPABASE_URL);
 console.log("SUPABASE_KEY exists =", !!SUPABASE_KEY);
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("❌ Missing SUPABASE_URL or SUPABASE_KEY in Railway env");
-}
-
-// ========================
+// =====================
 // SUPABASE INIT
-// ========================
+// =====================
 const supabase = createClient(SUPABASE_URL || "", SUPABASE_KEY || "");
 
-// ========================
+// =====================
 // HEALTH CHECK
-// ========================
+// =====================
 app.get("/", (req, res) => {
   res.send("Pingis backend kör");
 });
 
-// ========================
+// =====================
 // GET PLAYERS
-// ========================
+// =====================
 app.get("/players", async (req, res) => {
   try {
     const { data, error } = await supabase.from("players").select("*");
 
     if (error) {
-      console.error("Supabase error (/players):", error);
+      console.error("Players error:", error);
       return res.status(500).json(error);
     }
 
     res.json(data);
   } catch (err) {
-    console.error("Server error (/players):", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ========================
+// =====================
 // START TOURNAMENT
-// ========================
+// =====================
 app.post("/start-tournament", async (req, res) => {
   try {
     // 1. Hämta players
@@ -59,6 +54,7 @@ app.post("/start-tournament", async (req, res) => {
       .select("*");
 
     if (playersError) {
+      console.error("Players fetch error:", playersError);
       return res.status(500).json(playersError);
     }
 
@@ -66,7 +62,7 @@ app.post("/start-tournament", async (req, res) => {
       return res.status(400).json({ error: "Not enough players" });
     }
 
-    // 2. Skapa matcher (enkel 1v1 pairing)
+    // 2. Skapa matches
     const matches = [];
 
     for (let i = 0; i < players.length; i += 2) {
@@ -78,38 +74,46 @@ app.post("/start-tournament", async (req, res) => {
       matches.push({
         player1_id: p1.id,
         player2_id: p2.id,
-        status: "waiting",
+        table_id: null,
+        status: "QUEUED",
+        current_set: 1,
+        p1_sets: 0,
+        p2_sets: 0,
+        winner_id: null,
+        created_at: new Date().toISOString()
       });
     }
 
-    // 3. Spara matcher i Supabase
+    // 3. Insert matches
     const { data: inserted, error: insertError } = await supabase
       .from("matches")
       .insert(matches)
       .select();
 
     if (insertError) {
-      console.error("Supabase insert error:", insertError);
+      console.error("Insert error:", insertError);
       return res.status(500).json(insertError);
     }
 
     res.json({
       message: "Tournament created",
-      matches: inserted,
+      matches: inserted
     });
+
   } catch (err) {
     console.error("Server error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ========================
+// =====================
 // START SERVER
-// ========================
+// =====================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Backend kör på port", PORT);
+});  console.log("Backend kör på port", PORT);
 });      return res.status(500).json(error);
     }
 
