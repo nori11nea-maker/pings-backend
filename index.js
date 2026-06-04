@@ -25,104 +25,71 @@ app.get("/players", async (req, res) => {
 });
 
 app.post("/start-tournament", async (req, res) => {
-  const { data: players, error: playersError } = await supabase
-    .from("players")
-    .select("*");
-
-  if (playersError) return res.status(500).json(playersError);
-
-  const matches = [];
-
-  for (let i = 0; i < players.length; i += 2) {
-    const p1 = players[i];
-    const p2 = players[i + 1];
-    if (!p2) break;
-
-    matches.push({
-      player1_id: p1.id,
-      player2_id: p2.id,
-      table_id: null,
-      status: "QUEUED",
-      current_set: 1,
-      p1_sets: 0,
-      p2_sets: 0,
-      winner_id: null
-    });
-  }
-
-  const { data: inserted, error: insertError } = await supabase
-    .from("matches")
-    .insert(matches)
-    .select();
-
-  if (insertError) return res.status(500).json(insertError);
-
-  res.json({ message: "Tournament created", matches: inserted });
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.post("/auto-assign", async (req, res) => {
   try {
-    // 1. Hitta nästa QUEUED match
-    const { data: matches, error: matchError } = await supabase
-      .from("matches")
-      .select("*")
-      .eq("status", "QUEUED")
-      .order("created_at", { ascending: true })
-      .limit(1);
+    const { data: players, error: playersError } = await supabase
+      .from("players")
+      .select("*");
 
-    if (matchError) return res.status(500).json(matchError);
-    if (!matches || matches.length === 0) {
-      return res.json({ message: "No queued matches" });
+    if (playersError) {
+      return res.status(500).json({
+        success: false,
+        message: "Kunde inte hämta spelare",
+        error: playersError.message,
+      });
     }
 
-    const match = matches[0];
-
-    // 2. Hitta ledigt bord
-    const { data: tables, error: tableError } = await supabase
-      .from("tables")
-      .select("*")
-      .eq("status", "FREE")
-      .limit(1);
-
-    if (tableError) return res.status(500).json(tableError);
-    if (!tables || tables.length === 0) {
-      return res.json({ message: "No free tables" });
+    if (!players || players.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Inte tillräckligt med spelare",
+      });
     }
 
-    const table = tables[0];
+    // skapa matcher (par 1v1)
+    const matchesToInsert = [];
 
-    // 3. Uppdatera match → PLAYING + table_id
-    const { data: updatedMatch, error: updateError } = await supabase
+    for (let i = 0; i < players.length; i += 2) {
+      if (players[i + 1]) {
+        matchesToInsert.push({
+          player1_id: players[i].id,
+          player2_id: players[i + 1].id,
+          status: "QUEUED",
+        });
+      }
+    }
+
+    const { data: matches, error: insertError } = await supabase
       .from("matches")
-      .update({
-        status: "PLAYING",
-        table_id: table.id
-      })
-      .eq("id", match.id)
+      .insert(matchesToInsert)
       .select();
 
-    if (updateError) return res.status(500).json(updateError);
+    if (insertError) {
+      return res.status(500).json({
+        success: false,
+        message: "Kunde inte skapa matcher",
+        error: insertError.message,
+      });
+    }
 
-    // 4. Markera bord som upptaget
-    const { error: tableUpdateError } = await supabase
-      .from("tables")
-      .update({
-        status: "OCCUPIED"
-      })
-      .eq("id", table.id);
+    if (!matches || matches.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "Inga matcher skapades",
+      });
+    }
 
-    if (tableUpdateError) return res.status(500).json(tableUpdateError);
-
-    res.json({
-      message: "Match assigned to table",
-      match: updatedMatch,
-      table
+    return res.status(200).json({
+      success: true,
+      message: "Turnering startad",
+      matches,
     });
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      success: false,
+      message: "Serverfel",
+      error: err.message,
+    });
   }
 });
 
