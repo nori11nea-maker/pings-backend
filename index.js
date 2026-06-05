@@ -7,15 +7,18 @@ app.use(express.json());
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-const supabase = createClient(
-  SUPABASE_URL || "",
-  SUPABASE_KEY || ""
-);
+const supabase = createClient(SUPABASE_URL || "", SUPABASE_KEY || "");
 
+// --------------------
+// HEALTH CHECK
+// --------------------
 app.get("/", (req, res) => {
   res.send("Pingis backend kör");
 });
 
+// --------------------
+// PLAYERS
+// --------------------
 app.get("/players", async (req, res) => {
   const { data, error } = await supabase
     .from("players")
@@ -26,12 +29,13 @@ app.get("/players", async (req, res) => {
   res.json(data);
 });
 
-
-// =========================
-// START TOURNAMENT (FIXAD)
-// =========================
+// --------------------
+// START TOURNAMENT (MAIN)
+// --------------------
 app.post("/start-tournament", async (req, res) => {
   try {
+    console.log("🔥 REQUEST BODY:", req.body);
+
     const {
       activity_id,
       players,
@@ -51,7 +55,9 @@ app.post("/start-tournament", async (req, res) => {
       if (players[i + 1]) {
         matchesToInsert.push({
           activity_id,
-          table_id: tables ? tables[i % tables.length] : null,
+          table_id: tables?.length
+            ? tables[i % tables.length]
+            : null,
           player1_id: players[i],
           player2_id: players[i + 1],
           status: "QUEUED"
@@ -59,12 +65,20 @@ app.post("/start-tournament", async (req, res) => {
       }
     }
 
+    console.log("📦 MATCHES TO INSERT:", matchesToInsert);
+
     const { data, error } = await supabase
       .from("matches")
       .insert(matchesToInsert)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error("❌ SUPABASE ERROR:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
 
     return res.json({
       success: true,
@@ -72,6 +86,7 @@ app.post("/start-tournament", async (req, res) => {
     });
 
   } catch (err) {
+    console.error("❌ SERVER ERROR:", err);
     return res.status(500).json({
       success: false,
       error: err.message
@@ -79,10 +94,9 @@ app.post("/start-tournament", async (req, res) => {
   }
 });
 
-
-// =========================
-// LEAGUE
-// =========================
+// --------------------
+// CREATE LEAGUE
+// --------------------
 app.post("/create-league", async (req, res) => {
   try {
     const { activity_id, players } = req.body;
@@ -120,10 +134,9 @@ app.post("/create-league", async (req, res) => {
   }
 });
 
-
-// =========================
-// TOURNAMENT
-// =========================
+// --------------------
+// CREATE TOURNAMENT (POOLS)
+// --------------------
 app.post("/create-tournament", async (req, res) => {
   try {
     const { activity_id, players, poolSize } = req.body;
@@ -169,10 +182,9 @@ app.post("/create-tournament", async (req, res) => {
   }
 });
 
-
-// =========================
-// TRAINING
-// =========================
+// --------------------
+// CREATE TRAINING
+// --------------------
 app.post("/create-training", async (req, res) => {
   try {
     const { activity_id, players } = req.body;
@@ -210,10 +222,9 @@ app.post("/create-training", async (req, res) => {
   }
 });
 
-
-// =========================
+// --------------------
 // START SERVER
-// =========================
+// --------------------
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
