@@ -50,11 +50,12 @@ app.post("/start-tournament", async (req, res) => {
 
     for (let i = 0; i < players.length; i += 2) {
       if (players[i + 1]) {
-        matchesToInsert.push({
-          player1_id: players[i].id,
-          player2_id: players[i + 1].id,
-          status: "QUEUED",
-        });
+       matchesToInsert.push({
+        activity_id: req.body.activity_id || null,
+        player1_id: players[i].id,
+        player2_id: players[i + 1].id,
+        status: "QUEUED",
+});
       }
     }
 
