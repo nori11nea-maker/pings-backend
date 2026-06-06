@@ -10,7 +10,7 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const supabase = createClient(SUPABASE_URL || "", SUPABASE_KEY || "");
 
 // --------------------
-// HEALTH CHECK
+// HEALTH
 // --------------------
 app.get("/", (req, res) => {
   res.send("Pingis backend kör");
@@ -30,176 +30,80 @@ app.get("/players", async (req, res) => {
 });
 
 // --------------------
-// START TOURNAMENT (MAIN)
+// CREATE ACTIVITY (MAIN ENDPOINT)
 // --------------------
-app.post("/start-tournament", async (req, res) => {
+app.post("/create-activity", async (req, res) => {
   try {
-    console.log("🔥 REQUEST BODY:", req.body);
+    console.log("🔥 BODY:", req.body);
 
     const {
+      activity_type,
       activity_id,
       players,
-      tables
+      tables,
+      poolSize
     } = req.body;
 
-    if (!activity_id || !players || players.length < 2) {
+    if (!activity_type || !players || players.length < 2) {
       return res.status(400).json({
         success: false,
-        message: "Missing activity_id or players"
+        message: "Missing activity_type or players"
       });
     }
 
-    const matchesToInsert = [];
+    let matches = [];
 
-    for (let i = 0; i < players.length; i += 2) {
-      if (players[i + 1]) {
-        matchesToInsert.push({
-          activity_id,
-          table_id: tables?.length
-            ? tables[i % tables.length]
-            : null,
-          player1_id: players[i],
-          player2_id: players[i + 1],
-          status: "QUEUED"
-        });
-      }
-    }
-
-    console.log("📦 MATCHES TO INSERT:", matchesToInsert);
-
-    const { data, error } = await supabase
-      .from("matches")
-      .insert(matchesToInsert)
-      .select();
-
-    if (error) {
-      console.error("❌ SUPABASE ERROR:", error);
-      return res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-
-    return res.json({
-      success: true,
-      matches: data
-    });
-
-  } catch (err) {
-    console.error("❌ SERVER ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-// --------------------
-// CREATE LEAGUE
-// --------------------
-app.post("/create-league", async (req, res) => {
-  try {
-    const { activity_id, players } = req.body;
-
-    const matches = [];
-
-    for (let i = 0; i < players.length; i++) {
-      for (let j = i + 1; j < players.length; j++) {
-        matches.push({
-          activity_id,
-          player1_id: players[i],
-          player2_id: players[j],
-          status: "QUEUED"
-        });
-      }
-    }
-
-    const { data, error } = await supabase
-      .from("matches")
-      .insert(matches)
-      .select();
-
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      matches: data
-    });
-
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-// --------------------
-// CREATE TOURNAMENT (POOLS)
-// --------------------
-app.post("/create-tournament", async (req, res) => {
-  try {
-    const { activity_id, players, poolSize } = req.body;
-
-    const pools = [];
-
-    for (let i = 0; i < players.length; i += poolSize) {
-      pools.push(players.slice(i, i + poolSize));
-    }
-
-    const matches = [];
-
-    for (const pool of pools) {
-      for (let i = 0; i < pool.length; i++) {
-        for (let j = i + 1; j < pool.length; j++) {
+    // --------------------
+    // TRAINING / LEAGUE (same logic)
+    // --------------------
+    if (
+      activity_type === "training" ||
+      activity_type === "league"
+    ) {
+      for (let i = 0; i < players.length; i++) {
+        for (let j = i + 1; j < players.length; j++) {
           matches.push({
             activity_id,
-            player1_id: pool[i],
-            player2_id: pool[j],
+            player1_id: players[i],
+            player2_id: players[j],
+            table_id: tables?.[0] || null,
             status: "QUEUED"
           });
         }
       }
     }
 
-    const { data, error } = await supabase
-      .from("matches")
-      .insert(matches)
-      .select();
+    // --------------------
+    // TOURNAMENT (POOLS)
+    // --------------------
+    if (activity_type === "tournament") {
+      const size = poolSize || 2;
+      const pools = [];
 
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      matches: data
-    });
-
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-// --------------------
-// CREATE TRAINING
-// --------------------
-app.post("/create-training", async (req, res) => {
-  try {
-    const { activity_id, players } = req.body;
-
-    const matches = [];
-
-    for (let i = 0; i < players.length; i++) {
-      for (let j = i + 1; j < players.length; j++) {
-        matches.push({
-          activity_id,
-          player1_id: players[i],
-          player2_id: players[j],
-          status: "QUEUED"
-        });
+      for (let i = 0; i < players.length; i += size) {
+        pools.push(players.slice(i, i + size));
       }
+
+      for (const pool of pools) {
+        for (let i = 0; i < pool.length; i++) {
+          for (let j = i + 1; j < pool.length; j++) {
+            matches.push({
+              activity_id,
+              player1_id: pool[i],
+              player2_id: pool[j],
+              table_id: tables?.[0] || null,
+              status: "QUEUED"
+            });
+          }
+        }
+      }
+    }
+
+    if (matches.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No matches generated"
+      });
     }
 
     const { data, error } = await supabase
@@ -207,7 +111,13 @@ app.post("/create-training", async (req, res) => {
       .insert(matches)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
 
     res.json({
       success: true,
@@ -215,6 +125,7 @@ app.post("/create-training", async (req, res) => {
     });
 
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
       error: err.message
