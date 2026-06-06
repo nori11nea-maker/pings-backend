@@ -4,37 +4,45 @@ import { createClient } from "@supabase/supabase-js";
 const app = express();
 app.use(express.json());
 
+// --------------------
+// SUPABASE
+// --------------------
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-const supabase = createClient(SUPABASE_URL || "", SUPABASE_KEY || "");
+const supabase = createClient(
+  SUPABASE_URL || "",
+  SUPABASE_KEY || ""
+);
 
 // --------------------
-// HEALTH
+// HEALTH CHECK
 // --------------------
 app.get("/", (req, res) => {
   res.send("Pingis backend kör");
 });
 
 // --------------------
-// PLAYERS
+// PLAYERS (optional debug)
 // --------------------
 app.get("/players", async (req, res) => {
   const { data, error } = await supabase
     .from("players")
     .select("*");
 
-  if (error) return res.status(500).json(error);
+  if (error) {
+    return res.status(500).json(error);
+  }
 
   res.json(data);
 });
 
 // --------------------
-// CREATE ACTIVITY (MAIN ENDPOINT)
+// MAIN ENDPOINT (ALL ACTIVITIES)
 // --------------------
 app.post("/create-activity", async (req, res) => {
   try {
-    console.log("🔥 BODY:", req.body);
+    console.log("🔥 REQUEST BODY:", req.body);
 
     const {
       activity_type,
@@ -44,21 +52,38 @@ app.post("/create-activity", async (req, res) => {
       poolSize
     } = req.body;
 
-    if (!activity_type || !players || players.length < 2) {
+    // --------------------
+    // VALIDATION
+    // --------------------
+    if (!activity_type) {
       return res.status(400).json({
         success: false,
-        message: "Missing activity_type or players"
+        message: "Missing activity_type"
+      });
+    }
+
+    if (!players || !Array.isArray(players) || players.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Players must be an array with at least 2 players"
+      });
+    }
+
+    if (!tables || !Array.isArray(tables) || tables.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Tables must be provided"
       });
     }
 
     let matches = [];
 
     // --------------------
-    // TRAINING / LEAGUE (same logic)
+    // LEAGUE & TRAINING
     // --------------------
     if (
-      activity_type === "training" ||
-      activity_type === "league"
+      activity_type === "league" ||
+      activity_type === "training"
     ) {
       for (let i = 0; i < players.length; i++) {
         for (let j = i + 1; j < players.length; j++) {
@@ -66,7 +91,7 @@ app.post("/create-activity", async (req, res) => {
             activity_id,
             player1_id: players[i],
             player2_id: players[j],
-            table_id: tables?.[0] || null,
+            table_id: tables[i % tables.length],
             status: "QUEUED"
           });
         }
@@ -74,7 +99,7 @@ app.post("/create-activity", async (req, res) => {
     }
 
     // --------------------
-    // TOURNAMENT (POOLS)
+    // TOURNAMENT (POOL SYSTEM)
     // --------------------
     if (activity_type === "tournament") {
       const size = poolSize || 2;
@@ -91,7 +116,7 @@ app.post("/create-activity", async (req, res) => {
               activity_id,
               player1_id: pool[i],
               player2_id: pool[j],
-              table_id: tables?.[0] || null,
+              table_id: tables[i % tables.length],
               status: "QUEUED"
             });
           }
@@ -99,6 +124,9 @@ app.post("/create-activity", async (req, res) => {
       }
     }
 
+    // --------------------
+    // SAFETY CHECK
+    // --------------------
     if (matches.length === 0) {
       return res.status(400).json({
         success: false,
@@ -106,27 +134,33 @@ app.post("/create-activity", async (req, res) => {
       });
     }
 
+    console.log("📦 MATCHES GENERATED:", matches);
+
+    // --------------------
+    // INSERT INTO SUPABASE
+    // --------------------
     const { data, error } = await supabase
       .from("matches")
       .insert(matches)
       .select();
 
     if (error) {
-      console.error(error);
+      console.error("❌ SUPABASE ERROR:", error);
       return res.status(500).json({
         success: false,
         error: error.message
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       matches: data
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({
+    console.error("❌ SERVER ERROR:", err);
+
+    return res.status(500).json({
       success: false,
       error: err.message
     });
